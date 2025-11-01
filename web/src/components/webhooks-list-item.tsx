@@ -19,7 +19,11 @@ export function WebhooksListItem({ webhook }: WebhooksListItemProps) {
     <div className="group rounded-lg transition-colors duration-300 hover:bg-zinc-700/30">
       <div className="flex items-start gap-3 px-4 py-2.5">
         <Checkbox />
-        <Link to="/" className="flex flex-1 min-w-0 items-start gap-3">
+        <Link
+          to="/webhooks/$id"
+          params={{ id: webhook.id }}
+          className="flex flex-1 min-w-0 items-start gap-3"
+        >
           <span className="w-12 shrink-0 font-mono text-xs font-semibold text-zinc-300 text-right">
             {webhook.method}
           </span>

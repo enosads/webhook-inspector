@@ -90,6 +90,7 @@ function buildHeaders(stripeSignature: string, contentType: string) {
 }
 
 async function seed() {
+  await db.delete(webhooks)
   const count = 75 // at least 60
   const rows: Array<typeof webhooks.$inferInsert> = []
 
@@ -97,7 +98,7 @@ async function seed() {
     const type = randomStripeEventType()
     const eventId = `evt_${faker.string.alphanumeric({ length: 24 }).toLowerCase()}`
     const payload = makeStripeEventPayload(eventId, type)
-    const body = JSON.stringify(payload)
+    const body = JSON.stringify(payload, null, 2)
 
     const contentType = 'application/json'
     const sigTimestamp =
