@@ -1,156 +1,118 @@
 import { faker } from '@faker-js/faker'
-import { db } from '@/db/index'
-import { webhooks } from '@/db/schema'
+import { db } from '.'
+import { webhooks } from './schema'
 
-function randomStripeEventType() {
-  const events = [
-    'payment_intent.created',
-    'payment_intent.succeeded',
-    'payment_intent.payment_failed',
-    'payment_intent.canceled',
-    'charge.succeeded',
-    'charge.failed',
-    'charge.refunded',
-    'charge.captured',
-    'customer.created',
-    'customer.updated',
-    'customer.deleted',
-    'customer.subscription.created',
-    'customer.subscription.updated',
-    'customer.subscription.deleted',
-    'invoice.created',
-    'invoice.finalized',
-    'invoice.payment_succeeded',
-    'invoice.payment_failed',
-    'invoice.paid',
-    'invoice.voided',
-    'invoice.marked_uncollectible',
-    'invoice.upcoming',
-    'checkout.session.completed',
-    'checkout.session.async_payment_succeeded',
-    'checkout.session.async_payment_failed',
-    'payout.paid',
-    'payout.failed',
-  ] as const
-  return faker.helpers.arrayElement(events)
-}
+// Eventos comuns do Stripe
+const stripeEvents = [
+  'charge.succeeded',
+  'charge.failed',
+  'charge.refunded',
+  'payment_intent.succeeded',
+  'payment_intent.payment_failed',
+  'payment_intent.created',
+  'invoice.paid',
+  'invoice.payment_failed',
+  'invoice.created',
+  'invoice.finalized',
+  'customer.created',
+  'customer.updated',
+  'customer.deleted',
+  'customer.subscription.created',
+  'customer.subscription.updated',
+  'customer.subscription.deleted',
+  'checkout.session.completed',
+  'checkout.session.expired',
+  'payment_method.attached',
+  'payment_method.detached',
+]
 
-function makeStripeEventPayload(id: string, type: string) {
-  const created = faker.date.recent({ days: 90 }).getTime() / 1000 // seconds
-  const livemode = faker.datatype.boolean()
-  return {
-    id,
+function generateStripeWebhook() {
+  const eventType = faker.helpers.arrayElement(stripeEvents)
+  const amount = faker.number.int({ min: 1000, max: 50000 })
+  const currency = faker.helpers.arrayElement(['usd', 'eur', 'brl'])
+
+  // Corpo do webhook simulando estrutura do Stripe
+  const body = {
+    id: `evt_${faker.string.alphanumeric(24)}`,
     object: 'event',
-    api_version: '2024-06-20',
-    created,
+    api_version: '2023-10-16',
+    created: faker.date.recent({ days: 30 }).getTime() / 1000,
+    type: eventType,
     data: {
       object: {
-        id: `pi_${faker.string.alphanumeric({ length: 24 }).toLowerCase()}`,
-        object: type.startsWith('invoice')
-          ? 'invoice'
-          : type.startsWith('charge')
-            ? 'charge'
-            : type.startsWith('checkout')
-              ? 'checkout.session'
-              : type.startsWith('customer')
-                ? 'customer'
-                : 'payment_intent',
-        amount: faker.number.int({ min: 500, max: 50000 }),
-        currency: faker.finance.currencyCode().toLowerCase(),
-        status: faker.helpers.arrayElement([
-          'succeeded',
-          'requires_payment_method',
-          'processing',
-          'failed',
-          'paid',
-          'open',
-        ]),
-        customer: `cus_${faker.string.alphanumeric({ length: 14 }).toLowerCase()}`,
+        id: eventType.includes('charge')
+          ? `ch_${faker.string.alphanumeric(24)}`
+          : eventType.includes('payment_intent')
+            ? `pi_${faker.string.alphanumeric(24)}`
+            : eventType.includes('invoice')
+              ? `in_${faker.string.alphanumeric(24)}`
+              : eventType.includes('customer')
+                ? `cus_${faker.string.alphanumeric(14)}`
+                : `cs_${faker.string.alphanumeric(24)}`,
+        object: eventType.split('.')[0],
+        amount: amount,
+        currency: currency,
+        customer: `cus_${faker.string.alphanumeric(14)}`,
+        description: faker.company.catchPhrase(),
+        status: eventType.includes('failed') ? 'failed' : 'succeeded',
+        receipt_email: faker.internet.email(),
       },
     },
-    livemode,
-    pending_webhooks: faker.number.int({ min: 0, max: 1 }),
-    request: {
-      id: null,
-      idempotency_key: faker.string.alphanumeric({ length: 24 }),
-    },
-    type,
   }
-}
 
-function buildHeaders(stripeSignature: string, contentType: string) {
-  return {
-    'user-agent': `Stripe/1.0 (+https://stripe.com/docs/webhooks)`,
-    'stripe-signature': stripeSignature,
-    'content-type': contentType,
+  // Headers típicos do Stripe
+  const headers = {
+    'content-type': 'application/json',
+    'stripe-signature': `t=${Math.floor(Date.now() / 1000)},v1=${faker.string.alphanumeric(64)}`,
+    'user-agent': 'Stripe/1.0 (+https://stripe.com/docs/webhooks)',
     accept: '*/*',
-    host: faker.internet.domainName(),
-    connection: 'close',
-  } as Record<string, string>
+    'accept-encoding': 'gzip, deflate',
+    'x-stripe-client-user-agent': JSON.stringify({
+      bindings_version: '10.0.0',
+      lang: 'node',
+      lang_version: '18.0.0',
+      platform: 'linux',
+      publisher: 'stripe',
+    }),
+  }
+
+  const bodyString = JSON.stringify(body, null, 2)
+
+  return {
+    method: 'POST',
+    pathname: '/webhooks/stripe',
+    ip: faker.internet.ipv4(),
+    statusCode: faker.helpers.arrayElement([200, 200, 200, 200, 500]), // Maioria 200
+    contentType: 'application/json',
+    contentLength: Buffer.byteLength(bodyString),
+    queryParams: null,
+    headers: headers,
+    body: bodyString,
+    createdAt: faker.date.recent({ days: 30 }),
+  }
 }
 
 async function seed() {
+  console.log('🌱 Seeding database...')
+
   await db.delete(webhooks)
-  const count = 75 // at least 60
-  const rows: Array<typeof webhooks.$inferInsert> = []
 
-  for (let i = 0; i < count; i++) {
-    const type = randomStripeEventType()
-    const eventId = `evt_${faker.string.alphanumeric({ length: 24 }).toLowerCase()}`
-    const payload = makeStripeEventPayload(eventId, type)
-    const body = JSON.stringify(payload, null, 2)
+  // Gerar 60 webhooks
+  const webhooksData = Array.from({ length: 60 }, () => generateStripeWebhook())
 
-    const contentType = 'application/json'
-    const sigTimestamp =
-      Math.floor(Date.now() / 1000) -
-      faker.number.int({ min: 0, max: 60 * 60 * 24 * 30 })
-    const signature =
-      `t=${sigTimestamp},` +
-      `v1=${faker.string.hexadecimal({ length: 64, casing: 'lower' }).slice(2)},` +
-      `v0=${faker.string.hexadecimal({ length: 32, casing: 'lower' }).slice(2)}`
+  // Ordenar por data de criação (mais antigos primeiro)
+  webhooksData.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
 
-    const pathname = faker.helpers.arrayElement([
-      '/webhooks/stripe',
-      '/api/webhooks/stripe',
-      '/stripe/webhooks',
-    ])
+  await db.insert(webhooks).values(webhooksData)
 
-    rows.push({
-      method: 'POST',
-      pathname,
-      ip: faker.internet.ip(),
-      statusCode:
-        faker.helpers.maybe(() => faker.number.int({ min: 200, max: 204 }), {
-          probability: 0.9,
-        }) ?? 200,
-      contentType,
-      contentLength: Buffer.byteLength(body, 'utf8'),
-      queryParams: faker.helpers.maybe(
-        () => ({
-          attempt: String(faker.number.int({ min: 1, max: 3 })),
-          retry: faker.helpers.arrayElement(['true', 'false']),
-        }),
-        { probability: 0.2 },
-      ),
-      headers: buildHeaders(signature, contentType),
-      body,
-      createdAt: faker.date.recent({ days: 90 }),
-    })
-  }
-
-  // Insert in chunks to avoid exceeding parameter limits
-  const chunkSize = 25
-  for (let i = 0; i < rows.length; i += chunkSize) {
-    const chunk = rows.slice(i, i + chunkSize)
-    await db.insert(webhooks).values(chunk)
-  }
-
-  // eslint-disable-next-line no-console
-  console.log(`Seeded ${rows.length} webhook(s) into the database.`)
+  console.log('✅ Database seeded successfully with 60 Stripe webhooks!')
 }
 
-seed().catch((err) => {
-  // eslint-disable-next-line no-console
-  console.error('Seed failed:', err)
-  process.exitCode = 1
-})
+seed()
+  .catch((error) => {
+    console.error('❌ Error seeding database:', error)
+    process.exit(1)
+  })
+  .finally(() => {
+    process.exit(0)
+  })
