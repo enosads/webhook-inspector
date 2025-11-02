@@ -1,12 +1,14 @@
 import { useSuspenseInfiniteQuery } from '@tanstack/react-query'
-import { Loader2 } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { Loader2, Wand2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { webhookListSchema } from '../http/schemas/webhooks.ts'
 import { WebhooksListItem } from './webhooks-list-item.tsx'
 
 export function WebhooksList() {
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const observerRef = useRef<IntersectionObserver | null>(null)
+
+  const [checkedWebhooksIds, setCheckedWebhooksIds] = useState<string[]>([])
 
   const { data, hasNextPage, fetchNextPage, isFetchingNextPage } =
     useSuspenseInfiniteQuery({
@@ -49,11 +51,44 @@ export function WebhooksList() {
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
+  function handleCheckWebhook(webhookId: string) {
+    if (checkedWebhooksIds.includes(webhookId)) {
+      setCheckedWebhooksIds((prevCheckedWebhooksIds) =>
+        prevCheckedWebhooksIds.filter((id) => id !== webhookId),
+      )
+    } else {
+      setCheckedWebhooksIds((prevCheckedWebhooksIds) => [
+        ...prevCheckedWebhooksIds,
+        webhookId,
+      ])
+    }
+  }
+
+  const hasAnyWebhookChecked = checkedWebhooksIds.length > 0
+
+  function handleGenerateHandler() {
+    console.log('webhookIds: ', checkedWebhooksIds)
+  }
+
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="space-y-1 p-2">
+        <button
+          disabled={!hasAnyWebhookChecked}
+          className="bg-indigo-400 text-white size-8 disabled:opacity-50 mb-3 items-center justify-center flex w-full rounded-lg gap-3 font-medium text-sm py-2.5"
+          type="button"
+          onClick={() => handleGenerateHandler()}
+        >
+          <Wand2 className="size-4" />
+          Gerar items
+        </button>
         {webhooks.map((webhook) => (
-          <WebhooksListItem key={webhook.id} webhook={webhook} />
+          <WebhooksListItem
+            key={webhook.id}
+            webhook={webhook}
+            onWebhookChecked={handleCheckWebhook}
+            isWebhookChecked={checkedWebhooksIds.includes(webhook.id)}
+          />
         ))}
       </div>
       {hasNextPage && (
