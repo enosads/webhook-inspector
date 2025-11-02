@@ -34,7 +34,7 @@ export const generateHandler: FastifyPluginAsyncZod = async (app) => {
       const webhooksBodies = result.map((webhook) => webhook.body).join('\n\n')
 
       const { text } = await generateText({
-        model: google('gemini-2.5-flash-lite'),
+        model: google('gemini-2.5-flash'),
         prompt: `
           Generate a TypeScript function that serves as a handler for multiple webhook events. The function should accept a request body containing different webhook events and validate the incoming data using Zod. Each webhook event type should have its own schema defined using Zod.
 
