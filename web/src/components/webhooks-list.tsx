@@ -9,6 +9,9 @@ export function WebhooksList() {
   const observerRef = useRef<IntersectionObserver | null>(null)
 
   const [checkedWebhooksIds, setCheckedWebhooksIds] = useState<string[]>([])
+  const [generatedHandleCode, setGeneratedHandleCode] = useState<string | null>(
+    null,
+  )
 
   const { data, hasNextPage, fetchNextPage, isFetchingNextPage } =
     useSuspenseInfiniteQuery({
@@ -66,8 +69,24 @@ export function WebhooksList() {
 
   const hasAnyWebhookChecked = checkedWebhooksIds.length > 0
 
-  function handleGenerateHandler() {
-    console.log('webhookIds: ', checkedWebhooksIds)
+  async function handleGenerateHandler() {
+    const response = await fetch('http://localhost:3333/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        webhookIds: checkedWebhooksIds,
+      }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+
+    type GenerateResponse = { code: string }
+
+    const data: GenerateResponse = await response.json()
+
+    setGeneratedHandleCode(data.code)
+
+    console.log(response)
   }
 
   return (
